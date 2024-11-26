@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns:fx="http://javafx.com/fxml" fx:controller="com.youtube.downloader.YouTubeDownloaderController" spacing="10" alignment="CENTER">
+    <TextField fx:id="videoUrlField" promptText="Enter YouTube URL" prefWidth="400"/>
+    <HBox spacing="10" alignment="CENTER">
+        <TextField fx:id="outputPathField" promptText="Output Directory" prefWidth="300"/>
+        <Button fx:id="browseOutputButton" text="Browse"/>
+    </HBox>
+    <ProgressBar fx:id="progressBar" prefWidth="400" progress="0"/>
+    <Label fx:id="statusLabel" text=""/>
+    <Button fx:id="downloadButton" text="Download" prefWidth="200"/>
+</VBox>
