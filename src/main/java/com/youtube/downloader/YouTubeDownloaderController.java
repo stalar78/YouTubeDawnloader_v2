@@ -4,12 +4,15 @@ import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
 import org.zeroturnaround.exec.ProcessExecutor;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class YouTubeDownloaderController {
 
@@ -18,6 +21,9 @@ public class YouTubeDownloaderController {
 
     @FXML
     private TextField outputPathField;
+
+    @FXML
+    private TextField cookiesPathField;
 
     @FXML
     private ProgressBar progressBar;
@@ -29,6 +35,9 @@ public class YouTubeDownloaderController {
     private Button browseOutputButton;
 
     @FXML
+    private Button browseCookiesButton;
+
+    @FXML
     private Label statusLabel;
 
     @FXML
@@ -36,7 +45,7 @@ public class YouTubeDownloaderController {
         // Логика для кнопки "Download"
         downloadButton.setOnAction(event -> downloadVideo());
 
-        // Логика для кнопки "Browse" (выбор папки сохранения)
+        // Логика для кнопки "Browse" (папка сохранения)
         browseOutputButton.setOnAction(event -> {
             DirectoryChooser directoryChooser = new DirectoryChooser();
             directoryChooser.setTitle("Select Download Directory");
@@ -45,11 +54,23 @@ public class YouTubeDownloaderController {
                 outputPathField.setText(selectedDirectory.getAbsolutePath());
             }
         });
+
+        // Логика для кнопки "Browse" (файл cookies.txt)
+        browseCookiesButton.setOnAction(event -> {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Select Cookies File");
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text Files", "*.txt"));
+            File selectedFile = fileChooser.showOpenDialog(null);
+            if (selectedFile != null) {
+                cookiesPathField.setText(selectedFile.getAbsolutePath());
+            }
+        });
     }
 
     private void downloadVideo() {
         String videoUrl = videoUrlField.getText().trim();
         String outputPath = outputPathField.getText().trim();
+        String cookiesPath = cookiesPathField.getText().trim();
 
         if (videoUrl.isEmpty() || outputPath.isEmpty()) {
             statusLabel.setText("Please provide video URL and output path.");
@@ -65,29 +86,49 @@ public class YouTubeDownloaderController {
 
         // Команда для yt-dlp
         String command = ytDlpPath +
-                " -f bestvideo+bestaudio " +
+                " -f \"bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]\" " +
                 " --merge-output-format mp4 " +
+                (cookiesPath.isEmpty() ? "" : "--cookies \"" + cookiesPath.replace("\\", "\\\\") + "\" ") +
                 " -o \"" + outputPath.replace("\\", "\\\\") + "\\\\%(title)s.%(ext)s\" " +
                 "\"" + videoUrl + "\"";
 
         // Выполняем команду в фоновом потоке
         Executors.newSingleThreadExecutor().submit(() -> {
             try {
-                try {
-                    new ProcessExecutor()
-                            .command("cmd", "/c", command)
-                            .execute();
-                } catch (TimeoutException e) {
-                    throw new RuntimeException(e);
-                }
+                // Шаблон для извлечения процента загрузки
+                Pattern progressPattern = Pattern.compile("(\\d{1,3}\\.\\d)%");
 
-                // По завершении обновляем интерфейс
+                // Выполняем процесс yt-dlp
+                new ProcessExecutor()
+                        .command("cmd", "/c", command)
+                        .redirectOutput(new org.zeroturnaround.exec.stream.LogOutputStream() {
+                            @Override
+                            protected void processLine(String line) {
+                                // Отображаем строку в консоли (для отладки)
+                                System.out.println(line);
+
+                                // Ищем прогресс загрузки
+                                Matcher matcher = progressPattern.matcher(line);
+                                if (matcher.find()) {
+                                    // Извлекаем процент и обновляем индикатор
+                                    double progress = Double.parseDouble(matcher.group(1)) / 100.0;
+                                    Platform.runLater(() -> {
+                                        progressBar.setProgress(progress);
+                                        statusLabel.setText("Downloading... " + (int) (progress * 100) + "%");
+                                    });
+                                }
+                            }
+                        })
+                        .redirectErrorStream(true) // Объединяем stderr и stdout
+                        .execute();
+
+                // По завершении загрузки обновляем интерфейс
                 Platform.runLater(() -> {
                     statusLabel.setText("Download completed!");
                     progressBar.setProgress(1);
                 });
 
-            } catch (IOException | InterruptedException e) {
+            } catch (IOException | InterruptedException | TimeoutException e) {
                 e.printStackTrace();
                 Platform.runLater(() -> {
                     statusLabel.setText("Error during download: " + e.getMessage());
@@ -96,4 +137,6 @@ public class YouTubeDownloaderController {
             }
         });
     }
+
+
 }
