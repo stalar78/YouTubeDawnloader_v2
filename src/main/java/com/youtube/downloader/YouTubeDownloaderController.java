@@ -40,6 +40,15 @@ public class YouTubeDownloaderController {
     @FXML
     private Label statusLabel;
 
+    private String detectPlatform(String videoUrl) {
+        if (videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")) {
+            return "YouTube";
+        } else if (videoUrl.contains("vk.com") || videoUrl.contains("vkvideo.ru")) {
+            return "VK";
+        } else {
+            return "Unknown";
+        }
+    }
     @FXML
     public void initialize() {
         // Логика для кнопки "Download"
@@ -77,9 +86,24 @@ public class YouTubeDownloaderController {
             return;
         }
 
+        // Обработка ссылок vkvideo.ru и исправление лишних дефисов
+        if (videoUrl.contains("vkvideo.ru")) {
+            videoUrl = videoUrl.replace("vkvideo.ru", "vk.com");
+        }
+        if (videoUrl.contains("video--")) {
+            videoUrl = videoUrl.replace("video--", "video-");
+        }
+
+        // Распознаём платформу
+        String platform = detectPlatform(videoUrl);
+        if (platform.equals("Unknown")) {
+            statusLabel.setText("Unsupported platform. Please use YouTube or VK.");
+            return;
+        }
+
         // Устанавливаем начальный прогресс
         progressBar.setProgress(0);
-        statusLabel.setText("Preparing download...");
+        statusLabel.setText("Preparing download from " + platform + "...");
 
         // Путь к yt-dlp.exe
         String ytDlpPath = "C:\\tools\\yt-dlp.exe";
@@ -92,39 +116,25 @@ public class YouTubeDownloaderController {
                 " -o \"" + outputPath.replace("\\", "\\\\") + "\\\\%(title)s.%(ext)s\" " +
                 "\"" + videoUrl + "\"";
 
+        // Выводим команду для отладки
+        System.out.println("Command: " + command);
+
         // Выполняем команду в фоновом потоке
         Executors.newSingleThreadExecutor().submit(() -> {
             try {
-                // Шаблон для извлечения процента загрузки
-                Pattern progressPattern = Pattern.compile("(\\d{1,3}\\.\\d)%");
-
-                // Выполняем процесс yt-dlp
                 new ProcessExecutor()
                         .command("cmd", "/c", command)
                         .redirectOutput(new org.zeroturnaround.exec.stream.LogOutputStream() {
                             @Override
                             protected void processLine(String line) {
-                                // Отображаем строку в консоли (для отладки)
                                 System.out.println(line);
-
-                                // Ищем прогресс загрузки
-                                Matcher matcher = progressPattern.matcher(line);
-                                if (matcher.find()) {
-                                    // Извлекаем процент и обновляем индикатор
-                                    double progress = Double.parseDouble(matcher.group(1)) / 100.0;
-                                    Platform.runLater(() -> {
-                                        progressBar.setProgress(progress);
-                                        statusLabel.setText("Downloading... " + (int) (progress * 100) + "%");
-                                    });
-                                }
                             }
                         })
-                        .redirectErrorStream(true) // Объединяем stderr и stdout
+                        .redirectErrorStream(true)
                         .execute();
 
-                // По завершении загрузки обновляем интерфейс
                 Platform.runLater(() -> {
-                    statusLabel.setText("Download completed!");
+                    statusLabel.setText("Download from " + platform + " completed!");
                     progressBar.setProgress(1);
                 });
 
